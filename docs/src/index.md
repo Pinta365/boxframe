@@ -74,4 +74,21 @@ yarn add jsr:@pinta365/boxframe
 vlt install jsr:@pinta365/boxframe
 ```
 
+#### Browser (ESM)
+For browser usage, you can import BoxFrame directly from esm.sh:
+
+```html
+<script type="module">
+import { DataFrame } from "https://esm.sh/jsr/@pinta365/boxframe@0.0.1";
+
+// Use BoxFrame in your browser application
+const df = new DataFrame({
+    name: ["Alice", "Bob", "Charlie"],
+    age: [25, 30, 35]
+});
+
+console.log(df.toString());
+</script>
+```
+
 Ready to get started? Check out our [Getting Started Guide](/getting-started) or explore the [API Reference](/api).

@@ -38,6 +38,24 @@ yarn add jsr:@pinta365/boxframe
 # vlt
 vlt install jsr:@pinta365/boxframe
 ```
+
+#### Browser (ESM)
+For browser usage, you can import BoxFrame directly from esm.sh:
+
+```html
+<script type="module">
+import { DataFrame } from "https://esm.sh/jsr/@pinta365/boxframe@0.0.1";
+
+// Use BoxFrame in your browser application
+const df = new DataFrame({
+    name: ["Alice", "Bob", "Charlie"],
+    age: [25, 30, 35]
+});
+
+console.log(df.toString());
+</script>
+```
+
 ## Your First DataFrame
 
 Let's create a simple DataFrame to get started:
@@ -176,7 +194,7 @@ const names = df.get("name");
 A Series is a one-dimensional array with labels:
 
 ```typescript
-import { Series } from "https://jsr.io/@pinta365/";
+import { Series } from "@pinta365/boxframe";
 
 // Create a Series
 const ages = new Series([25, 30, 35, 28], { name: "age" });
