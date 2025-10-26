@@ -91,4 +91,6 @@ console.log(df.toString());
 </script>
 ```
 
+**Try it live:** [JSFiddle Demo](https://jsfiddle.net/pinta365/e9L8ynmr/)
+
 Ready to get started? Check out our [Getting Started Guide](/getting-started) or explore the [API Reference](/api).

@@ -33,6 +33,17 @@ npx jsr add @pinta365/boxframe
 bunx jsr add @pinta365/boxframe
 ```
 
+### Browser
+
+```html
+<script type="module">
+    import { DataFrame } from "https://esm.sh/jsr/@pinta365/boxframe@0.0.1";
+    // Use DataFrame in your browser app
+</script>
+```
+
+**Try it live:** [JSFiddle Demo](https://jsfiddle.net/pinta365/e9L8ynmr/)
+
 ## Documentation
 
 📚 **[Complete Documentation](https://boxframe.pinta.land)** - API reference, examples, and guides

@@ -56,6 +56,8 @@ console.log(df.toString());
 </script>
 ```
 
+**Try it live:** [JSFiddle Demo](https://jsfiddle.net/pinta365/e9L8ynmr/)
+
 ## Your First DataFrame
 
 Let's create a simple DataFrame to get started:
