@@ -1,6 +1,6 @@
 # BoxFrame
 
-**DataFrames for JavaScript** - A high-performance data analysis library with WebAssembly acceleration.
+**DataFrames for JavaScript** - A high-performance data analysis library with WebAssembly acceleration. Inspired by Pandas.
 
 **Cross-Platform**: Works in Deno, Node.js, Bun, and browsers
 

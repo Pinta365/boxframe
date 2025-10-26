@@ -244,16 +244,10 @@ export interface QueryLogical {
 }
 
 /**
- * Extended globalThis interface to include BoxFrame-specific properties
- */
-declare global {
-    var DF_USE_WASM_ENGINE: boolean | undefined;
-}
-
-/**
  * Helper function to check if WASM engine is enabled
  * Defaults to enabled unless explicitly disabled
  */
 export function isWasmEngineEnabled(): boolean {
-    return globalThis.DF_USE_WASM_ENGINE !== false;
+    // deno-lint-ignore no-explicit-any
+    return (globalThis as any).DF_USE_WASM_ENGINE !== false;
 }

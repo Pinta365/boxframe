@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 /**
  * Tests for Series class
  *
@@ -398,8 +399,8 @@ Deno.test("Series - Performance: sorting with large dataset", () => {
 // Test WASM fallback behavior when WASM is disabled
 Deno.test("Series - WASM fallback behavior when disabled", () => {
     // Temporarily disable WASM
-    const originalValue = globalThis.DF_USE_WASM_ENGINE;
-    globalThis.DF_USE_WASM_ENGINE = false;
+    const originalValue = (globalThis as any).DF_USE_WASM_ENGINE;
+    (globalThis as any).DF_USE_WASM_ENGINE = false;
 
     try {
         // Test that Series operations still work with JavaScript fallbacks
@@ -439,15 +440,15 @@ Deno.test("Series - WASM fallback behavior when disabled", () => {
         assertEquals(stringIsin.values, [false, true, false]);
     } finally {
         // Restore original value
-        globalThis.DF_USE_WASM_ENGINE = originalValue;
+        (globalThis as any).DF_USE_WASM_ENGINE = originalValue;
     }
 });
 
 // Test WASM fallback with error handling
 Deno.test("Series - WASM fallback error handling", () => {
     // Temporarily disable WASM
-    const originalValue = globalThis.DF_USE_WASM_ENGINE;
-    globalThis.DF_USE_WASM_ENGINE = false;
+    const originalValue = (globalThis as any).DF_USE_WASM_ENGINE;
+    (globalThis as any).DF_USE_WASM_ENGINE = false;
 
     try {
         const data = [1, 2, 3, 4, 5];
@@ -473,15 +474,15 @@ Deno.test("Series - WASM fallback error handling", () => {
         assertEquals(nullFiltered.values, [1, 3, 5]);
     } finally {
         // Restore original value
-        globalThis.DF_USE_WASM_ENGINE = originalValue;
+        (globalThis as any).DF_USE_WASM_ENGINE = originalValue;
     }
 });
 
 // Test WASM fallback performance comparison
 Deno.test("Series - WASM fallback performance", () => {
     // Temporarily disable WASM
-    const originalValue = globalThis.DF_USE_WASM_ENGINE;
-    globalThis.DF_USE_WASM_ENGINE = false;
+    const originalValue = (globalThis as any).DF_USE_WASM_ENGINE;
+    (globalThis as any).DF_USE_WASM_ENGINE = false;
 
     try {
         const size = 10000;
@@ -501,6 +502,6 @@ Deno.test("Series - WASM fallback performance", () => {
         console.log(`JavaScript fallback performance: ${(end - start).toFixed(2)}ms for ${size} elements`);
     } finally {
         // Restore original value
-        globalThis.DF_USE_WASM_ENGINE = originalValue;
+        (globalThis as any).DF_USE_WASM_ENGINE = originalValue;
     }
 });

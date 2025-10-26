@@ -10,7 +10,8 @@ import { type CsvParseOptions, parseCsv, parseCsvFromFile } from "./csv_parser.t
 import { readFile } from "@cross/fs/io";
 import { CurrentRuntime, Runtime } from "@cross/runtime";
 // Enable WASM Engine by default; users can override by setting DF_USE_WASM_ENGINE=false
-globalThis.DF_USE_WASM_ENGINE = globalThis.DF_USE_WASM_ENGINE ?? true;
+// deno-lint-ignore no-explicit-any
+(globalThis as any).DF_USE_WASM_ENGINE = (globalThis as any).DF_USE_WASM_ENGINE ?? true;
 
 export * from "./types.ts";
 

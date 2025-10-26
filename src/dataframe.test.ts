@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 /**
  * Tests for DataFrame class
  *
@@ -611,8 +612,8 @@ Deno.test("DataFrame - Performance: filtering with large dataset", () => {
 // Test WASM fallback behavior when WASM is disabled
 Deno.test("DataFrame - WASM fallback behavior when disabled", () => {
     // Temporarily disable WASM
-    const originalValue = globalThis.DF_USE_WASM_ENGINE;
-    globalThis.DF_USE_WASM_ENGINE = false;
+    const originalValue = (globalThis as any).DF_USE_WASM_ENGINE;
+    (globalThis as any).DF_USE_WASM_ENGINE = false;
 
     try {
         // Test that DataFrame operations still work with JavaScript fallbacks
@@ -641,15 +642,15 @@ Deno.test("DataFrame - WASM fallback behavior when disabled", () => {
         assertEquals(filteredName.data.get("name")?.values, ["Alice", "Charlie"]);
     } finally {
         // Restore original value
-        globalThis.DF_USE_WASM_ENGINE = originalValue;
+        (globalThis as any).DF_USE_WASM_ENGINE = originalValue;
     }
 });
 
 // Test WASM fallback with edge cases
 Deno.test("DataFrame - WASM fallback edge cases", () => {
     // Temporarily disable WASM
-    const originalValue = globalThis.DF_USE_WASM_ENGINE;
-    globalThis.DF_USE_WASM_ENGINE = false;
+    const originalValue = (globalThis as any).DF_USE_WASM_ENGINE;
+    (globalThis as any).DF_USE_WASM_ENGINE = false;
 
     try {
         // Test with null values
@@ -677,6 +678,6 @@ Deno.test("DataFrame - WASM fallback edge cases", () => {
         assertEquals(emptyDf.shape, [0, 0]);
     } finally {
         // Restore original value
-        globalThis.DF_USE_WASM_ENGINE = originalValue;
+        (globalThis as any).DF_USE_WASM_ENGINE = originalValue;
     }
 });
