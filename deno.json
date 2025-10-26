@@ -1,0 +1,44 @@
+{
+    "name": "@pinta365/boxframe",
+    "version": "0.0.1-alpha.5",
+    "exports": "./mod.ts",
+    "tasks": {
+        "check": "deno check mod.ts",
+        "test": "deno test --coverage=coverage",
+        "coverage": "deno coverage coverage",
+
+        "docs:serve": "cd docs && deno task serve",
+
+        "wasm:build": "cd wasm && deno run -A jsr:@deno/wasmbuild@0.19.3 --inline",
+        "wasm:check": "deno task wasm:build --check",
+        "wasm:clean": "cd wasm && cd wasm_frame && cargo clean"
+    },
+    "imports": {
+        "@cross/fs": "jsr:@cross/fs@^0.1.13",
+        "@cross/runtime": "jsr:@cross/runtime@^1.2.1",
+        "@std/assert": "jsr:@std/assert@1",
+        "@std/csv": "jsr:@std/csv@^1.0.6"
+    },
+    "exclude": ["docs/"],
+    "fmt": {
+        "lineWidth": 150,
+        "indentWidth": 4,
+        "exclude": ["wasm/**", "docs/**"]
+    },
+    "publish": {
+        "include": [
+            "LICENSE",
+            "README.md",
+            "mod.ts",
+            "src/**/*.ts",
+            "wasm/lib/**"
+        ],
+        "exclude": [
+            "wasm/src/**",
+            "wasm/Cargo.toml",
+            "wasm/Cargo.lock",
+            "wasm/target/**",
+            "wasm/wasm_frame/**"
+        ]
+    }
+}
