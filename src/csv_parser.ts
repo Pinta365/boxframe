@@ -54,10 +54,10 @@ function convertValue(value: string, dtype: DType, naValues: string[] = []): Dat
 
         case "bool": {
             const lowerValue = value.toLowerCase();
-            if (lowerValue === "true" || lowerValue === "1" || lowerValue === "yes") {
+            if (lowerValue === "true") {
                 return true;
             }
-            if (lowerValue === "false" || lowerValue === "0" || lowerValue === "no") {
+            if (lowerValue === "false") {
                 return false;
             }
             return null;

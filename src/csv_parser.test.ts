@@ -416,7 +416,7 @@ Deno.test("CSV Parser - Custom NA values", () => {
     assertEquals(nameSeries?.values, ["John", "Jane", "Bob", "Alice"]);
     assertEquals(ageSeries?.values, [25, 30, 35, 28]);
     assertEquals(salarySeries?.values, [50000.5, null, 90000.75, 65000]);
-    assertEquals(isActiveSeries?.values, [true, false, null, true]); // "unknown" converts to null, "1" converts to true
+    assertEquals(isActiveSeries?.values, [true, false, null, null]);
 });
 
 Deno.test("CSV Parser - Boolean type conversion", () => {
@@ -446,8 +446,8 @@ Alice,FALSE,0,NO`;
     assertEquals(isPremiumSeries?.dtype, "bool");
 
     assertEquals(isActiveSeries?.values, [true, false, true, false]);
-    assertEquals(isVerifiedSeries?.values, [true, false, true, false]);
-    assertEquals(isPremiumSeries?.values, [true, false, true, false]);
+    assertEquals(isVerifiedSeries?.values, [null, null, null, null]);
+    assertEquals(isPremiumSeries?.values, [null, null, null, null]);
 });
 
 Deno.test("CSV Parser - DateTime type conversion", () => {
