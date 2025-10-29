@@ -1,3 +1,4 @@
 docs/_site/
 wasm/target/
 coverage/
+samples/

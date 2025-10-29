@@ -4,8 +4,11 @@
 
 import { parse } from "@std/csv/parse";
 import { DataFrame } from "./dataframe.ts";
+import { Series } from "./series.ts";
 import { readFile } from "@cross/fs/io";
 import { CurrentRuntime, Runtime } from "@cross/runtime";
+import type { DataValue, DType } from "./types.ts";
+import { inferDType } from "./types.ts";
 
 /**
  * CSV parsing options
@@ -21,6 +24,140 @@ export interface CsvParseOptions {
     columns?: string[];
     /** Comment character to ignore lines starting with this character */
     comment?: string;
+    /** Column data types - can be specified by column name or index */
+    dtypes?: Record<string, DType> | DType[];
+    /** Whether to infer data types automatically (default: true) */
+    inferTypes?: boolean;
+    /** Values to treat as null/NaN */
+    naValues?: string[];
+}
+
+/**
+ * Convert a string value to the specified data type
+ */
+function convertValue(value: string, dtype: DType, naValues: string[] = []): DataValue {
+    // Check if value should be treated as null
+    if (naValues.includes(value) || value === "" || value === "null" || value === "NULL") {
+        return null;
+    }
+
+    switch (dtype) {
+        case "int32": {
+            const intVal = parseInt(value, 10);
+            return isNaN(intVal) ? null : intVal;
+        }
+
+        case "float64": {
+            const floatVal = parseFloat(value);
+            return isNaN(floatVal) ? null : floatVal;
+        }
+
+        case "bool": {
+            const lowerValue = value.toLowerCase();
+            if (lowerValue === "true" || lowerValue === "1" || lowerValue === "yes") {
+                return true;
+            }
+            if (lowerValue === "false" || lowerValue === "0" || lowerValue === "no") {
+                return false;
+            }
+            return null;
+        }
+
+        case "datetime": {
+            const dateVal = new Date(value);
+            return isNaN(dateVal.getTime()) ? null : dateVal;
+        }
+
+        case "string":
+        default: {
+            return value;
+        }
+    }
+}
+
+/**
+ * Check if a string looks like a datetime
+ */
+function looksLikeDateTime(value: string): boolean {
+    const datePatterns = [
+        /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, // YYYY-MM-DD HH:MM:SS
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, // YYYY-MM-DDTHH:MM:SS
+        /^\d{2}\/\d{2}\/\d{4}$/, // MM/DD/YYYY
+        /^\d{2}-\d{2}-\d{4}$/, // MM-DD-YYYY
+        /^\d{4}\/\d{2}\/\d{2}$/, // YYYY/MM/DD
+        /^\d{1,2}\/\d{1,2}\/\d{4}$/, // M/D/YYYY or MM/DD/YYYY
+        /^\d{1,2}-\d{1,2}-\d{4}$/, // M-D-YYYY or MM-DD-YYYY
+    ];
+
+    return datePatterns.some((pattern) => pattern.test(value.trim()));
+}
+
+/**
+ * Check if a string can be parsed as a valid datetime
+ */
+function canParseAsDateTime(value: string): boolean {
+    /* TODO: Im considering if its better to just try to convert to date to see if it can be parsed as a datetime instead of regexing it
+        Basically comes down to performance vs accuracy*/
+    if (!looksLikeDateTime(value)) {
+        return false;
+    }
+
+    const date = new Date(value);
+    return !isNaN(date.getTime());
+}
+
+/**
+ * Infer data types for columns based on sample values
+ */
+function inferColumnTypes(
+    data: (string | null)[][],
+    columnNames: string[],
+    sampleSize: number = 100,
+): Record<string, DType> {
+    const types: Record<string, DType> = {};
+
+    for (let colIndex = 0; colIndex < columnNames.length; colIndex++) {
+        const columnName = columnNames[colIndex];
+        const sampleValues = data
+            .slice(0, sampleSize)
+            .map((row) => row[colIndex])
+            .filter((val) => val !== null && val !== undefined && val !== "");
+
+        if (sampleValues.length === 0) {
+            types[columnName] = "string";
+            continue;
+        }
+
+        const allLookLikeDates = sampleValues.every((val) => val !== null && looksLikeDateTime(val));
+        const allCanParseAsDates = sampleValues.every((val) => val !== null && canParseAsDateTime(val));
+
+        if (allLookLikeDates && allCanParseAsDates) {
+            types[columnName] = "datetime";
+            continue;
+        }
+
+        const convertedValues: DataValue[] = [];
+        for (const val of sampleValues) {
+            if (val) {
+                const numVal = Number(val);
+                if (!isNaN(numVal)) {
+                    convertedValues.push(numVal);
+                } else {
+                    convertedValues.push(val);
+                }
+            }
+        }
+
+        const firstValue = convertedValues[0];
+        if (firstValue !== undefined) {
+            types[columnName] = inferDType(firstValue);
+        } else {
+            types[columnName] = "string";
+        }
+    }
+
+    return types;
 }
 
 /**
@@ -33,10 +170,13 @@ export function parseCsv(content: string, options: CsvParseOptions = {}): DataFr
         skipRows = 0,
         columns,
         comment,
+        dtypes,
+        inferTypes = true,
+        naValues = [],
     } = options;
 
     if (content.trim() === "") {
-        throw new Error("Empty path is not allowed");
+        throw new Error("Empty content is not allowed");
     }
 
     let processedContent = content;
@@ -70,7 +210,7 @@ export function parseCsv(content: string, options: CsvParseOptions = {}): DataFr
             const lines = processedContent.trim().split("\n");
             if (lines.length === 1) {
                 const headers = lines[0].split(delimiter || ",").map((h) => h.trim());
-                const emptyData: Record<string, unknown[]> = {};
+                const emptyData: Record<string, DataValue[]> = {};
                 for (const header of headers) {
                     emptyData[header] = [];
                 }
@@ -80,68 +220,109 @@ export function parseCsv(content: string, options: CsvParseOptions = {}): DataFr
         return new DataFrame({});
     }
 
+    let columnNames: string[];
     if (hasHeader || columns) {
         const dataObjects = parsedData as Record<string, unknown>[];
-
-        if (dataObjects.length === 0) {
-            return new DataFrame({});
-        }
-
-        const columnNames = columns || Object.keys(dataObjects[0]);
-
-        const data: Record<string, unknown[]> = {};
-        for (const col of columnNames) {
-            data[col] = [];
-        }
-
-        for (const row of dataObjects) {
-            for (const col of columnNames) {
-                const value = row[col];
-
-                if (value !== null && value !== undefined) {
-                    data[col].push(value);
-                } else {
-                    data[col].push(null);
-                }
-            }
-        }
-
-        return new DataFrame(data);
+        columnNames = columns || Object.keys(dataObjects[0]);
     } else {
         const dataArrays = parsedData as string[][];
-
-        if (dataArrays.length === 0) {
-            return new DataFrame({});
-        }
-
         const numCols = dataArrays[0].length;
-        const columnNames = Array.from({ length: numCols }, (_, i) => `col_${i}`);
+        columnNames = Array.from({ length: numCols }, (_, i) => `col_${i}`);
+    }
 
-        const data: Record<string, unknown[]> = {};
-        for (const col of columnNames) {
-            data[col] = [];
+    const stringData: (string | null)[][] = [];
+    if (hasHeader || columns) {
+        const dataObjects = parsedData as Record<string, unknown>[];
+        for (const row of dataObjects) {
+            const stringRow: (string | null)[] = [];
+            for (const col of columnNames) {
+                const value = row[col];
+                stringRow.push(value !== null && value !== undefined ? String(value) : null);
+            }
+            stringData.push(stringRow);
         }
-
+    } else {
+        const dataArrays = parsedData as string[][];
         for (const row of dataArrays) {
-            for (let i = 0; i < columnNames.length; i++) {
-                const col = columnNames[i];
-                const value = row[i];
+            stringData.push([...row]);
+        }
+    }
 
-                if (value !== null && value !== undefined && value !== "") {
-                    const numValue = Number(value);
-                    if (!isNaN(numValue)) {
-                        data[col].push(numValue);
-                    } else {
-                        data[col].push(value);
-                    }
+    let columnTypes: Record<string, DType>;
+    if (dtypes) {
+        const inferredTypes = inferTypes ? inferColumnTypes(stringData, columnNames) : {};
+
+        if (Array.isArray(dtypes)) {
+            columnTypes = {};
+            for (let i = 0; i < columnNames.length; i++) {
+                const dtype = dtypes[i];
+                if (dtype && ["int32", "float64", "string", "bool", "datetime"].includes(dtype)) {
+                    columnTypes[columnNames[i]] = dtype;
+                } else if (inferTypes && inferredTypes[columnNames[i]]) {
+                    columnTypes[columnNames[i]] = inferredTypes[columnNames[i]];
                 } else {
-                    data[col].push(null);
+                    columnTypes[columnNames[i]] = "string";
+                }
+            }
+        } else {
+            columnTypes = {};
+            for (const col of columnNames) {
+                const dtype = dtypes[col];
+                if (dtype && ["int32", "float64", "string", "bool", "datetime"].includes(dtype)) {
+                    columnTypes[col] = dtype;
+                } else if (inferTypes && inferredTypes[col]) {
+                    columnTypes[col] = inferredTypes[col];
+                } else {
+                    columnTypes[col] = "string";
                 }
             }
         }
-
-        return new DataFrame(data);
+    } else if (inferTypes) {
+        columnTypes = inferColumnTypes(stringData, columnNames);
+    } else {
+        columnTypes = {};
+        for (const col of columnNames) {
+            columnTypes[col] = "string";
+        }
     }
+
+    const data: Record<string, DataValue[]> = {};
+    const seriesMap = new Map<string, Series>();
+
+    for (const col of columnNames) {
+        data[col] = [];
+    }
+
+    for (const row of stringData) {
+        for (let i = 0; i < columnNames.length; i++) {
+            const col = columnNames[i];
+            const value = row[i];
+            const dtype = columnTypes[col];
+
+            if (value === null || value === undefined) {
+                data[col].push(null);
+            } else {
+                const convertedValue = convertValue(value, dtype, naValues);
+                data[col].push(convertedValue);
+            }
+        }
+    }
+
+    for (const col of columnNames) {
+        const series = new Series(data[col], {
+            name: col,
+            dtype: columnTypes[col],
+        });
+        seriesMap.set(col, series);
+    }
+
+    const df = new DataFrame(data);
+
+    for (const [col, series] of seriesMap) {
+        (df.data as Map<string, Series>).set(col, series);
+    }
+
+    return df;
 }
 
 /**
