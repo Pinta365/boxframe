@@ -5,7 +5,7 @@
 import { parse } from "@std/csv/parse";
 import { DataFrame } from "./dataframe.ts";
 import { Series } from "./series.ts";
-import { readFile } from "@cross/fs/io";
+import { readFile } from "@cross/fs";
 import { CurrentRuntime, Runtime } from "@cross/runtime";
 import type { DataValue, DType } from "./types.ts";
 import { inferDType } from "./types.ts";

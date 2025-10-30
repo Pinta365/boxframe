@@ -17,6 +17,8 @@ export * from "./types.ts";
 
 export { Series } from "./series.ts";
 export { DataFrame } from "./dataframe.ts";
+export { parseCsv, parseCsvFromFile } from "./csv_parser.ts";
+export { analyzeCsv, parseCsvBatchedStream, parseCsvStream } from "./csv_stream.ts";
 
 export { GroupBy } from "./groupby.ts";
 export { DataFrameGroupBy } from "./dataframe_groupby.ts";
