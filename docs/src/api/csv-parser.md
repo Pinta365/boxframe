@@ -13,6 +13,9 @@ Functions for parsing CSV data from various sources.
 
 - `parseCsv(content: string, options?)` - Parse CSV content from string
 - `parseCsvFromFile(filePath: string, options?)` - Parse CSV from file or URL
+- `analyzeCsv(filePath: string, options?)` - Sample the first N lines to infer columns, dtypes, and estimate row count
+- `parseCsvBatchedStream(filePath: string, options)` - Stream a large CSV in batches and receive `DataFrame` batches via callback
+- `parseCsvStream(filePath: string, options?)` - Stream a large CSV and return a single accumulated `DataFrame`
 
 ## Options
 
@@ -47,6 +50,16 @@ const df2 = await parseCsvFromFile("data.csv");
 
 // Parse from URL
 const df3 = await parseCsvFromFile("https://example.com/data.csv");
+```
+
+### Streaming Options
+
+```typescript
+interface ParseCsvStreamOptions extends CsvParseOptions {
+    batchSize?: number; // Number of lines per batch (default: 25,000)
+    onBatch: (df: DataFrame) => void | Promise<void>; // Required for batched streaming
+    onProgress?: (progress: { bytesRead: number; rowsProcessed: number }) => void; // Optional progress callback
+}
 ```
 
 ### Data Type Control
@@ -105,6 +118,45 @@ const df9 = parseCsv(csvContent, {
 });
 ```
 
+### Streaming Large CSVs
+
+```typescript
+import { parseCsvBatchedStream, parseCsvStream } from "@pinta365/boxframe";
+
+// 1) Batched streaming with callbacks
+await parseCsvBatchedStream("/path/to/large.csv", {
+    hasHeader: true,
+    batchSize: 50000, // number of data lines per batch
+    onBatch: async (df) => {
+        // Process each batch DataFrame incrementally
+        console.log("batch rows:", df.shape[0]);
+        // e.g., write to DB or aggregate stats here
+    },
+    onProgress: ({ bytesRead, rowsProcessed }) => {
+        console.log("progress:", { bytesRead, rowsProcessed });
+    },
+});
+
+// 2) Streaming that returns a single accumulated DataFrame. Options are optional.
+const df = await parseCsvStream("/path/to/large.csv", {
+    hasHeader: true,
+    batchSize: 25000, // affects internal batching; result is a single DataFrame
+});
+
+console.log("total rows:", df.shape[0]);
+```
+
+### Quick File Analysis (Sampling)
+
+```typescript
+import { analyzeCsv } from "@pinta365/boxframe";
+
+const analysis = await analyzeCsv("/path/to/large.csv", { sampleLines: 1000 });
+console.log(analysis.columns);      // inferred column names
+console.log(analysis.dtypes);       // inferred dtypes per column
+console.log(analysis.estimatedRows); // rough estimate of total rows
+console.log(analysis.sampleRows);    // rows parsed from the sample
+```
 ## Data Type Inference
 
 The CSV parser intelligently infers data types from your data:

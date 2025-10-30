@@ -250,6 +250,27 @@ const results = largeDataset
 console.log("Processed", results.shape[0], "groups");
 ```
 
+### Streaming Large CSV Files
+
+```typescript
+import { parseCsvBatchedStream } from "@pinta365/boxframe";
+
+// Stream a large CSV in batches and write to a database incrementally
+await parseCsvBatchedStream("/data/huge.csv", {
+    hasHeader: true,
+    batchSize: 50000,
+    onBatch: async (df) => {
+        // Replace with your persistence/aggregation logic
+        console.log("Inserting rows:", df.shape[0]);
+        // await insertBatch(df);
+    },
+    onProgress: ({ bytesRead, rowsProcessed }) => {
+        console.log("progress:", { bytesRead, rowsProcessed });
+    },
+});
+
+```
+
 ## Integration Examples
 
 ### Working with APIs

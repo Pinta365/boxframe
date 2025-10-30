@@ -273,6 +273,25 @@ const df7 = await BoxFrame.readGoogleSheetFromUrl(
 );
 ```
 
+### Streaming Large CSVs
+
+When working with very large CSV files, consider using the streaming APIs to reduce memory usage and process data incrementally:
+
+```typescript
+import { parseCsvBatchedStream } from "@pinta365/boxframe";
+
+await parseCsvBatchedStream("/path/to/large.csv", {
+    hasHeader: true,
+    batchSize: 25000,
+    onBatch: (df) => {
+        // Handle each batch as it arrives
+        console.log("batch rows:", df.shape[0]);
+    },
+});
+```
+
+For a single accumulated `DataFrame`, use `parseCsvStream`.
+
 ## Next Steps
 
 - Explore the [API Reference](/api) for detailed documentation
