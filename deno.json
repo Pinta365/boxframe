@@ -4,7 +4,7 @@
     "exports": "./mod.ts",
     "tasks": {
         "check": "deno check mod.ts",
-        "test": "deno test --coverage=coverage",
+        "test": "deno test --allow-read --coverage=coverage",
         "coverage": "deno coverage coverage",
 
         "docs:serve": "cd docs && deno task serve",
@@ -38,7 +38,8 @@
             "wasm/Cargo.toml",
             "wasm/Cargo.lock",
             "wasm/target/**",
-            "wasm/wasm_frame/**"
+            "wasm/wasm_frame/**",
+            "samples/**"
         ]
     }
 }

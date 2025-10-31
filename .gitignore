@@ -2,3 +2,5 @@ docs/_site/
 wasm/target/
 coverage/
 samples/
+!samples/Hospital_Patient_Records/patients.csv
+dev/
