@@ -269,6 +269,18 @@ await parseCsvBatchedStream("/data/huge.csv", {
     },
 });
 
+// For very large files, use worker-based parallel parsing (2-4x faster)
+await parseCsvBatchedStream("/data/very-large.csv", {
+    useWorkers: true, // Enable parallel processing
+    workerCount: 4, // Number of workers (default: cores - 1)
+    batchSize: 50000,
+    preserveOrder: false, // Faster: batches may arrive out of order
+    onBatch: async (df) => {
+        console.log("Processing batch:", df.shape[0], "rows");
+        // Process batch...
+    },
+});
+
 ```
 
 ## Integration Examples

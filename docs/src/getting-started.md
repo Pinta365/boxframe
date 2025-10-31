@@ -290,6 +290,18 @@ await parseCsvBatchedStream("/path/to/large.csv", {
 });
 ```
 
+For very large files (> 100MB), enable worker-based parallel parsing for better performance:
+
+```typescript
+await parseCsvBatchedStream("/path/to/very-large.csv", {
+    useWorkers: true, // Enable parallel processing across CPU cores
+    batchSize: 50000,
+    onBatch: (df) => {
+        console.log("batch rows:", df.shape[0]);
+    },
+});
+```
+
 For a single accumulated `DataFrame`, use `parseCsvStream`.
 
 ## Next Steps

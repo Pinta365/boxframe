@@ -59,6 +59,14 @@ interface ParseCsvStreamOptions extends CsvParseOptions {
     batchSize?: number; // Number of lines per batch (default: 25,000)
     onBatch: (df: DataFrame) => void | Promise<void>; // Required for batched streaming
     onProgress?: (progress: { bytesRead: number; rowsProcessed: number }) => void; // Optional progress callback
+    
+    // Worker-based parallel parsing options
+    useWorkers?: boolean; // Enable worker-based parsing (default: false)
+    workerCount?: number; // Number of workers (default: Math.max(1, cores - 1))
+    preserveOrder?: boolean; // Preserve batch order (default: true for parseCsvStream, false for batched)
+    schema?: { columns: string[]; dtypes: Record<string, DType> }; // Pre-computed schema to skip inference
+    abortSignal?: AbortSignal; // Signal for cancellation/timeout
+    workerModule?: string | URL; // Custom worker module URL (advanced)
 }
 ```
 
@@ -144,6 +152,63 @@ const df = await parseCsvStream("/path/to/large.csv", {
 });
 
 console.log("total rows:", df.shape[0]);
+```
+
+### Worker-Based Parallel Parsing
+
+For very large CSV files, you can enable worker-based parallel parsing to leverage multiple CPU cores:
+
+```typescript
+import { parseCsvBatchedStream, parseCsvStream, analyzeCsv } from "@pinta365/boxframe";
+
+// Enable workers for parallel processing (recommended for files > 100MB)
+await parseCsvBatchedStream("/path/to/very-large.csv", {
+    useWorkers: true, // Enable parallel processing
+    workerCount: 4, // Optional: specify number of workers (default: cores - 1)
+    batchSize: 50000,
+    preserveOrder: false, // Faster but batches may arrive out of order
+    onBatch: async (df) => {
+        console.log("Received batch:", df.shape[0], "rows");
+        // Process batch...
+    },
+});
+
+// With order preservation (slower but maintains batch sequence)
+await parseCsvBatchedStream("/path/to/very-large.csv", {
+    useWorkers: true,
+    preserveOrder: true, // Batches arrive in sequence (0, 1, 2, ...)
+    batchSize: 50000,
+    onBatch: async (df) => {
+        // Process batches in order...
+    },
+});
+
+// Pre-compute schema to skip inference in workers (faster startup)
+const analysis = await analyzeCsv("/path/to/very-large.csv", { sampleLines: 1000 });
+const df = await parseCsvStream("/path/to/very-large.csv", {
+    useWorkers: true,
+    schema: {
+        columns: analysis.columns,
+        dtypes: analysis.dtypes,
+    },
+    // Schema is known, so workers skip type inference
+});
+
+// With cancellation support
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 60000); // Cancel after 1 minute
+
+await parseCsvBatchedStream("/path/to/very-large.csv", {
+    useWorkers: true,
+    abortSignal: controller.signal, // Enables cancellation
+    onBatch: async (df) => {
+        // Process batches...
+    },
+}).catch((err) => {
+    if (err.message.includes("aborted")) {
+        console.log("Parsing cancelled");
+    }
+});
 ```
 
 ### Quick File Analysis (Sampling)
