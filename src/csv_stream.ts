@@ -5,8 +5,7 @@ import type { CsvParseOptions } from "./csv_parser.ts";
 import { CurrentRuntime, Runtime } from "@cross/runtime";
 import { open, stat } from "@cross/fs";
 import type { DType } from "./types.ts";
-import { WorkerPool } from "./runtime/worker_pool.ts";
-import { getDefaultWorkerModuleUrl } from "./runtime/create_worker.ts";
+import { getCPUCount, WorkerPool } from "@cross/workers";
 
 export interface AnalyzeCsvOptions {
     /** Number of lines to sample from the start of the file (default: 1000) */
@@ -108,16 +107,6 @@ async function inferSchemaFromSample(
 }
 
 /**
- * Get the number of CPU cores (with fallback)
- */
-function getCpuCount(): number {
-    if (typeof navigator !== "undefined" && navigator.hardwareConcurrency) {
-        return navigator.hardwareConcurrency;
-    }
-    return 4;
-}
-
-/**
  * Parse a CSV file in batches using a streaming reader.
  *
  * Reads the file progressively, parsing batches of lines and invoking the
@@ -138,8 +127,9 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
         return parseCsvBatchedStreamSingleThreaded(filePath, options);
     }
 
-    const workerCount = options.workerCount ?? Math.max(1, getCpuCount() - 1);
-    const workerModule = options.workerModule ?? getDefaultWorkerModuleUrl();
+    const cpuCount = await getCPUCount();
+    const workerCount = options.workerCount ?? Math.max(1, cpuCount - 1);
+    const workerModule = options.workerModule ?? new URL("./workers/csv_worker.ts", import.meta.url);
     const abortSignal = options.abortSignal;
 
     if (abortSignal?.aborted) {
@@ -152,11 +142,11 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
     }
 
     const pool = new WorkerPool({
-        size: workerCount,
+        workers: workerCount,
         moduleUrl: workerModule,
     });
 
-    pool.onError = (error, seq) => {
+    pool.onError = (error: unknown, seq?: number) => {
         console.error("Worker error:", error, "seq:", seq);
         pool.close().catch(() => {});
         throw error instanceof Error ? error : new Error(String(error));
@@ -195,31 +185,43 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
             { columns: string[]; dtypes?: Record<string, DType>; data: Record<string, unknown[]>; rowsProcessed: number }
         >();
 
-        const flushInOrder = async () => {
+        const createDataFrame = (resultData: {
+            columns: string[];
+            dtypes?: Record<string, DType>;
+            data: Record<string, unknown[]>;
+        }): DataFrame => {
+            if (resultData.dtypes) {
+                const typedData: Record<string, unknown[]> = {};
+                for (const [col, values] of Object.entries(resultData.data)) {
+                    typedData[col] = values;
+                }
+                const df = new DataFrame(typedData);
+                for (const [col, dtype] of Object.entries(resultData.dtypes)) {
+                    const series = df.data.get(col);
+                    if (series) {
+                        const seriesData = series.values;
+                        df.data.set(col, new Series(seriesData, { name: col, dtype }));
+                    }
+                }
+                return df;
+            } else {
+                return new DataFrame(resultData.data);
+            }
+        };
+
+        const flushInOrder = () => {
             while (pendingResults.has(nextSeq)) {
                 const result = pendingResults.get(nextSeq)!;
                 pendingResults.delete(nextSeq);
 
-                let df: DataFrame;
-                if (result.dtypes) {
-                    const typedData: Record<string, unknown[]> = {};
-                    for (const [col, values] of Object.entries(result.data)) {
-                        typedData[col] = values;
-                    }
-                    df = new DataFrame(typedData);
-                    for (const [col, dtype] of Object.entries(result.dtypes)) {
-                        const series = df.data.get(col);
-                        if (series) {
-                            const seriesData = series.values;
-                            df.data.set(col, new Series(seriesData, { name: col, dtype }));
-                        }
-                    }
-                } else {
-                    df = new DataFrame(result.data);
+                const df = createDataFrame(result);
+                const batchPromise = options.onBatch(df);
+                if (batchPromise instanceof Promise) {
+                    batchPromise.catch((err: unknown) => {
+                        console.error(`Error in onBatch callback:`, err);
+                    });
                 }
-
-                await options.onBatch(df);
-                rowsProcessed += result.rowsProcessed;
+                rowsProcessed += df.shape[0];
                 batchesCompleted++;
                 if (options.onProgress) {
                     options.onProgress({ bytesRead: bytesReadTotal, rowsProcessed });
@@ -228,38 +230,32 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
             }
         };
 
-        pool.onResult = async (result) => {
-            const { seq, payload } = result;
-            const resultData = payload as {
+        pool.onResult = (result: { seq: number; payload: unknown }) => {
+            const batch = result.payload as {
+                seq: number;
                 columns: string[];
                 dtypes?: Record<string, DType>;
                 data: Record<string, unknown[]>;
                 rowsProcessed: number;
             };
 
+            if (!batch || typeof batch !== "object") {
+                console.error("Invalid batch received:", batch);
+                return;
+            }
+
             if (preserveOrder) {
-                pendingResults.set(seq, resultData);
-                await flushInOrder();
+                pendingResults.set(batch.seq, batch);
+                flushInOrder();
             } else {
-                let df: DataFrame;
-                if (resultData.dtypes) {
-                    const typedData: Record<string, unknown[]> = {};
-                    for (const [col, values] of Object.entries(resultData.data)) {
-                        typedData[col] = values;
-                    }
-                    df = new DataFrame(typedData);
-                    for (const [col, dtype] of Object.entries(resultData.dtypes)) {
-                        const series = df.data.get(col);
-                        if (series) {
-                            const seriesData = series.values;
-                            df.data.set(col, new Series(seriesData, { name: col, dtype }));
-                        }
-                    }
-                } else {
-                    df = new DataFrame(resultData.data);
+                const df = createDataFrame(batch);
+                const batchPromise = options.onBatch(df);
+                if (batchPromise instanceof Promise) {
+                    batchPromise.catch((err: unknown) => {
+                        console.error(`Error in onBatch callback:`, err);
+                    });
                 }
-                await options.onBatch(df);
-                rowsProcessed += resultData.rowsProcessed;
+                rowsProcessed += df.shape[0];
                 batchesCompleted++;
                 if (options.onProgress) {
                     options.onProgress({ bytesRead: bytesReadTotal, rowsProcessed });
@@ -305,12 +301,8 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
                         await pool.post({
                             seq,
                             payload: {
-                                type: "BATCH",
-                                payload: {
-                                    seq,
-                                    header: headerLine,
-                                    linesBuffer: batchBuffer,
-                                },
+                                header: headerLine,
+                                linesBuffer: batchBuffer,
                             },
                             transfer: [batchBuffer.buffer],
                         });
@@ -343,30 +335,18 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
                 await pool.post({
                     seq,
                     payload: {
-                        type: "BATCH",
-                        payload: {
-                            seq,
-                            header: headerLine,
-                            linesBuffer: batchBuffer,
-                        },
+                        header: headerLine,
+                        linesBuffer: batchBuffer,
                     },
                     transfer: [batchBuffer.buffer],
                 });
             }
 
-            const expectedBatches = lastSeqSent + 1;
-
-            if (expectedBatches > 0) {
-                while (batchesCompleted < expectedBatches || pendingResults.size > 0) {
-                    if (abortSignal?.aborted) {
-                        throw new Error("Operation aborted");
-                    }
-
-                    await new Promise((resolve) => setTimeout(resolve, 10));
-                    if (preserveOrder) {
-                        await flushInOrder();
-                    }
-                }
+            if (preserveOrder) {
+                await pool.waitForCompletion();
+                flushInOrder();
+            } else {
+                await pool.waitForCompletion();
             }
         } finally {
             try {
@@ -376,7 +356,7 @@ export async function parseCsvBatchedStream(filePath: string, options: ParseCsvS
             }
         }
     } finally {
-        await pool.close();
+        await pool.close(true);
     }
 }
 

@@ -101,6 +101,33 @@ Deno.test({
 });
 
 Deno.test({
+    name: "CSV Worker Streaming - Column length consistency",
+    fn: async () => {
+        const batches: DataFrame[] = [];
+        await parseCsvBatchedStream(SMALL_CSV, {
+            useWorkers: true,
+            batchSize: 100,
+            onBatch: (df) => {
+                const rowCount = df.shape[0];
+                for (const col of df.columns) {
+                    const series = df.data.get(col);
+                    if (series) {
+                        assertEquals(
+                            series.length,
+                            rowCount,
+                            `Column '${col}' should have length ${rowCount}`,
+                        );
+                    }
+                }
+                batches.push(df);
+            },
+        });
+
+        assertEquals(batches.length > 0, true, "Should have processed batches");
+    },
+});
+
+Deno.test({
     name: "CSV Worker Streaming - Performance comparison demo",
     fn: async () => {
         // Single-threaded

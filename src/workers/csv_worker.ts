@@ -1,8 +1,10 @@
+/// <reference lib="webworker" />
 /**
  * CSV Worker Module
  * Handles CSV parsing in a worker context
  */
 
+import { setupWorker } from "@cross/workers";
 import { parse } from "@std/csv/parse";
 import type { DataValue, DType } from "../types.ts";
 import type { CsvParseOptions } from "../csv_parser.ts";
@@ -14,14 +16,6 @@ interface Schema {
     columns: string[];
     dtypes: Record<string, DType>;
 }
-
-/**
- * Worker message types
- */
-type WorkerMessage =
-    | { type: "INIT"; payload: InitPayload }
-    | { type: "BATCH"; payload: BatchPayload }
-    | { type: "CLOSE"; payload: {} };
 
 interface InitPayload {
     schema?: Schema;
@@ -189,99 +183,100 @@ function parseCsvBatch(
         }
     }
 
+    const rowsProcessed = data[columnNames[0]]?.length || 0;
+
     return {
         columns: columnNames,
         dtypes: schema ? undefined : columnTypes,
         data,
-        rowsProcessed: data[columnNames[0]]?.length || 0,
+        rowsProcessed,
     };
 }
 
 /**
- * Worker message handler
+ * Setup worker handler for batch processing
  */
-// @ts-ignore - self is available in worker context
-self.onmessage = async (ev: MessageEvent<WorkerMessage>) => {
-    try {
-        let type: string;
-        let payload: unknown;
-        let seq: number | undefined;
+setupWorker((data) => {
+    const { seq, payload } = data;
 
-        if (ev.data && typeof ev.data === "object") {
-            if ("type" in ev.data && "payload" in ev.data) {
-                type = ev.data.type as string;
-                payload = ev.data.payload;
-                if ("seq" in ev.data) {
-                    seq = ev.data.seq as number;
+    if (typeof seq !== "number" || seq < 0) {
+        if (payload && typeof payload === "object") {
+            if ("type" in payload) {
+                const msg = payload as { type: string; payload?: unknown };
+                if (msg.type === "INIT") {
+                    const initPayload = msg.payload as InitPayload;
+                    if (initPayload?.schema) {
+                        schema = initPayload.schema;
+                    }
+                    if (initPayload) {
+                        parseOptions = {
+                            delimiter: initPayload.delimiter,
+                            naValues: initPayload.naValues,
+                            hasHeader: initPayload.hasHeader ?? true,
+                            ...initPayload.parseOptions,
+                        };
+                    }
+                    return;
                 }
-            } else {
-                type = (ev.data as any).type || "";
-                payload = ev.data;
-                seq = (ev.data as any).seq;
+                if (msg.type === "CLOSE") {
+                    // @ts-ignore - self.close exists in worker context
+                    self.close();
+                    return;
+                }
             }
-        } else {
-            throw new Error(`Invalid message format: ${typeof ev.data}`);
         }
-
-        switch (type) {
-            case "INIT": {
-                const initPayload = payload as InitPayload;
-                if (initPayload.schema) {
+        if (data && typeof data === "object" && "type" in data && !("seq" in data)) {
+            const msg = data as { type: string; payload?: unknown };
+            if (msg.type === "INIT") {
+                const initPayload = msg.payload as InitPayload;
+                if (initPayload?.schema) {
                     schema = initPayload.schema;
                 }
-                parseOptions = {
-                    delimiter: initPayload.delimiter,
-                    naValues: initPayload.naValues,
-                    hasHeader: initPayload.hasHeader ?? true,
-                    ...initPayload.parseOptions,
-                };
-                return;
-            }
-
-            case "BATCH": {
-                const batchPayload = payload as BatchPayload;
-                const batchSeq = seq ?? batchPayload.seq;
-                const { header, linesBuffer } = batchPayload;
-
-                if (!linesBuffer) {
-                    throw new Error("BATCH message missing linesBuffer");
+                if (initPayload) {
+                    parseOptions = {
+                        delimiter: initPayload.delimiter,
+                        naValues: initPayload.naValues,
+                        hasHeader: initPayload.hasHeader ?? true,
+                        ...initPayload.parseOptions,
+                    };
                 }
-
-                const decoder = new TextDecoder();
-                const text = decoder.decode(linesBuffer);
-                const content = header ? header + "\n" + text : text;
-
-                const result = parseCsvBatch(content, schema, parseOptions);
-
-                // @ts-ignore - self is available in worker context
-                self.postMessage({
-                    type: "RESULT",
-                    seq: batchSeq,
-                    columns: result.columns,
-                    dtypes: result.dtypes,
-                    rowsProcessed: result.rowsProcessed,
-                    data: result.data,
-                });
                 return;
             }
-
-            case "CLOSE": {
-                // @ts-ignore - self is available in worker context
+            if (msg.type === "CLOSE") {
+                // @ts-ignore - self.close exists in worker context
                 self.close();
                 return;
             }
-
-            default: {
-                throw new Error(`Unknown message type: ${type}`);
-            }
         }
-    } catch (error) {
-        // @ts-ignore - self is available in worker context
-        self.postMessage({
-            type: "ERROR",
-            seq: (ev.data as any)?.seq ?? (ev.data as any)?.payload?.seq ?? -1,
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-        });
+        return;
     }
-};
+
+    const batchPayload = payload as BatchPayload;
+
+    if (!batchPayload || !batchPayload.linesBuffer) {
+        throw new Error("BATCH message missing linesBuffer");
+    }
+
+    let linesBuffer: Uint8Array;
+    if (batchPayload.linesBuffer instanceof ArrayBuffer) {
+        linesBuffer = new Uint8Array(batchPayload.linesBuffer);
+    } else if (batchPayload.linesBuffer instanceof Uint8Array) {
+        linesBuffer = batchPayload.linesBuffer;
+    } else {
+        throw new Error("Invalid linesBuffer type");
+    }
+
+    const decoder = new TextDecoder();
+    const text = decoder.decode(linesBuffer);
+    const content = batchPayload.header ? batchPayload.header + "\n" + text : text;
+
+    const result = parseCsvBatch(content, schema, parseOptions);
+
+    return {
+        seq,
+        columns: result.columns,
+        dtypes: result.dtypes,
+        rowsProcessed: result.rowsProcessed,
+        data: result.data,
+    };
+});
