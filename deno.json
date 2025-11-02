@@ -1,5 +1,5 @@
 {
-    "name": "@pinta365/boxframe",
+    "name": "@cross/boxframe",
     "version": "0.0.4",
     "exports": "./mod.ts",
     "tasks": {
